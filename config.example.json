@@ -1,0 +1,39 @@
+﻿{
+  "web_port": 3000,
+  "sms_db": {
+    "server": "DB_SERVER_IP",
+    "port": 1433,
+    "user": "sa",
+    "password": "YOUR_PASSWORD",
+    "database": "DSBH_SMS",
+    "options": {
+      "encrypt": false,
+      "trustServerCertificate": true
+    }
+  },
+  "bank_db": {
+    "server": "DB_SERVER_IP",
+    "port": 1433,
+    "user": "sa",
+    "password": "YOUR_PASSWORD",
+    "database": "DSBH_2",
+    "options": {
+      "encrypt": false,
+      "trustServerCertificate": true
+    }
+  },
+  "companies": [
+    {
+      "id": "company_id",
+      "name": "COMPANY_NAME",
+      "db_server": "COMPANY_DB_IP",
+      "db_port": 1433,
+      "db_user": "db_user",
+      "db_password": "db_password",
+      "db_database": "COMPANY_DB_NAME",
+      "socket_host": "COMPANY_SOCKET_IP",
+      "socket_port": 20200,
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,240 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SMS 실시간 자동 입출금 매칭 시스템</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="glow-container">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+  </div>
+
+  <div class="dashboard-wrapper">
+    <!-- Header -->
+    <header class="main-header glass-card">
+      <div class="logo-area">
+        <div class="pulse-icon"></div>
+        <h1>SMS Auto-Matcher <span>Dashboard</span></h1>
+      </div>
+      <div class="system-status">
+        <div class="status-indicator glass-card" id="sms-db-status">
+          <span class="led red"></span> SMS DB
+        </div>
+        <div class="status-indicator glass-card" id="bank-db-status">
+          <span class="led red"></span> BANK DB
+        </div>
+        <button class="btn btn-secondary" id="open-system-btn">⚙️ 시스템 설정</button>
+        <button class="btn btn-primary" id="open-register-btn">+ 업체 등록</button>
+      </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="dashboard-grid">
+      
+      <!-- 1. 업체 상태 카드 영역 -->
+      <section class="grid-item glass-card card-half">
+        <div class="card-header">
+          <h2>업체별 실시간 모니터링</h2>
+          <span class="badge" id="company-count">0개 등록됨</span>
+        </div>
+        <div class="companies-container" id="companies-list">
+          <div class="loading-spinner">데이터를 불러오는 중...</div>
+        </div>
+      </section>
+
+      <!-- 2. 최근 매칭 완료 이력 -->
+      <section class="grid-item glass-card card-half">
+        <div class="card-header">
+          <h2>최근 매칭 성공 이력</h2>
+          <span class="badge green">LIVE</span>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>시간</th>
+                <th>업체</th>
+                <th>구분</th>
+                <th>이름</th>
+                <th>금액</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody id="success-log-body">
+              <tr>
+                <td colspan="6" class="empty-row">최근 매칭 성공 이력이 없습니다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 3. 실시간 에러 및 시스템 로그 -->
+      <section class="grid-item glass-card card-full">
+        <div class="card-header">
+          <h2>시스템 경고 및 에러 로그</h2>
+          <button class="btn btn-secondary btn-xs" id="clear-error-log">로그 지우기</button>
+        </div>
+        <div class="terminal-log" id="error-log-container">
+          <div class="terminal-line system-msg">[SYSTEM] 실시간 모니터링 대시보드 기동 완료. 로그 감시 시작...</div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Register/Edit Company Modal Dialog -->
+  <div class="modal-backdrop" id="company-modal">
+    <div class="modal-content glass-card">
+      <div class="modal-header">
+        <h3 id="modal-title">새로운 업체 등록</h3>
+        <button class="close-btn" id="close-modal-btn">&times;</button>
+      </div>
+      <form id="company-form" class="modal-body">
+        <input type="hidden" id="comp-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="comp-name">업체명</label>
+            <input type="text" id="comp-name" required placeholder="예: GMD">
+          </div>
+          <div class="form-group">
+            <label for="comp-code">업체 고유 ID (영문/숫자)</label>
+            <input type="text" id="comp-code" required placeholder="예: gmd">
+          </div>
+        </div>
+        <fieldset class="form-section">
+          <legend>업체 MSSQL 데이터베이스 설정</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="db-server">DB 서버 IP (Server)</label>
+              <input type="text" id="db-server" required placeholder="예: 211.169.219.19">
+            </div>
+            <div class="form-group">
+              <label for="db-port">DB 포트 (Port)</label>
+              <input type="number" id="db-port" value="1433" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="db-user">DB 계정 (User)</label>
+              <input type="text" id="db-user" required placeholder="sa">
+            </div>
+            <div class="form-group">
+              <label for="db-password">DB 비밀번호 (Password)</label>
+              <input type="password" id="db-password" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="db-database">DB명 (Database)</label>
+            <input type="text" id="db-database" required placeholder="GTRADENEW">
+          </div>
+        </fieldset>
+        <fieldset class="form-section">
+          <legend>알림 소켓(Socket) 서버 설정</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="socket-host">소켓 IP (Host)</label>
+              <input type="text" id="socket-host" required placeholder="예: 211.169.219.19">
+            </div>
+            <div class="form-group">
+              <label for="socket-port">소켓 포트 (Port)</label>
+              <input type="number" id="socket-port" value="20200" required>
+            </div>
+          </div>
+        </fieldset>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="test-conn-btn">연결 테스트</button>
+          <div>
+            <button type="button" class="btn btn-secondary" id="cancel-btn">취소</button>
+            <button type="submit" class="btn btn-primary" id="save-btn">등록하기</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- System Setup Config Modal Dialog -->
+  <div class="modal-backdrop" id="system-modal">
+    <div class="modal-content glass-card">
+      <div class="modal-header">
+        <h3>공통 시스템 서버 설정</h3>
+        <button class="close-btn" id="close-system-modal-btn">&times;</button>
+      </div>
+      <form id="system-form" class="modal-body">
+        
+        <fieldset class="form-section">
+          <legend>1. SMS 수신 데이터베이스 (SMS_DB) 설정</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="sys-sms-server">서버 IP (Server)</label>
+              <input type="text" id="sys-sms-server" required placeholder="예: 115.92.124.17">
+            </div>
+            <div class="form-group">
+              <label for="sys-sms-port">포트 (Port)</label>
+              <input type="number" id="sys-sms-port" required value="1433">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="sys-sms-user">계정 (User)</label>
+              <input type="text" id="sys-sms-user" required placeholder="sa">
+            </div>
+            <div class="form-group">
+              <label for="sys-sms-password">비밀번호 (Password)</label>
+              <input type="password" id="sys-sms-password" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="sys-sms-database">DB명 (Database)</label>
+            <input type="text" id="sys-sms-database" required placeholder="DSBH_SMS">
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>2. 입금 관리 데이터베이스 (BANK_DB) 설정</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="sys-bank-server">서버 IP (Server)</label>
+              <input type="text" id="sys-bank-server" required placeholder="예: 115.92.124.12">
+            </div>
+            <div class="form-group">
+              <label for="sys-bank-port">포트 (Port)</label>
+              <input type="number" id="sys-bank-port" required value="1433">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="sys-bank-user">계정 (User)</label>
+              <input type="text" id="sys-bank-user" required placeholder="sa">
+            </div>
+            <div class="form-group">
+              <label for="sys-bank-password">비밀번호 (Password)</label>
+              <input type="password" id="sys-bank-password" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="sys-bank-database">DB명 (Database)</label>
+            <input type="text" id="sys-bank-database" required placeholder="DSBH_2">
+          </div>
+        </fieldset>
+
+        <div class="form-group">
+          <label for="sys-web-port">대시보드 웹 서비스 포트 (Port)</label>
+          <input type="number" id="sys-web-port" required value="3000">
+        </div>
+
+        <div class="form-actions" style="justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-secondary" id="cancel-system-btn">취소</button>
+          <button type="submit" class="btn btn-primary">변경사항 저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
