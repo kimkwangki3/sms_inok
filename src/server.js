@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
@@ -19,8 +19,8 @@ function createServer(configPath, config, updateConfigCallback) {
   
   // 1. 인증 미들웨어 (Static Resource 제외, API 보호)
   function requireAuth(req, res, next) {
-    // 로그인 API는 인증 체크 통과
-    if (req.path === '/api/login') {
+    // 로그인 API는 인증 체크 통과 (마운트 하위 상대경로 /login 포함)
+    if (req.path === '/login' || req.path === '/api/login') {
       return next();
     }
     
