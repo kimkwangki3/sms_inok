@@ -8,6 +8,7 @@ const companiesList = document.getElementById('companies-list');
 const successLogBody = document.getElementById('success-log-body');
 const errorLogContainer = document.getElementById('error-log-container');
 const clearErrorLog = document.getElementById('clear-error-log');
+const logoutBtn = document.getElementById('logout-btn');
 
 // Modal Elements - Company
 const companyModal = document.getElementById('company-modal');
@@ -50,25 +51,58 @@ const sysBankPasswordInput = document.getElementById('sys-bank-password');
 const sysBankDatabaseInput = document.getElementById('sys-bank-database');
 const sysWebPortInput = document.getElementById('sys-web-port');
 
+// Login Modal Elements
+const loginModal = document.getElementById('login-modal');
+const loginForm = document.getElementById('login-form');
+const loginUsernameInput = document.getElementById('login-username');
+const loginPasswordInput = document.getElementById('login-password');
+const loginErrorMsg = document.getElementById('login-error-msg');
+
 let isEditMode = false;
 let companiesConfig = [];
+let syncInterval = null;
 
-// API Request Helper
+// Auth Token Management
+function getAuthToken() {
+  return localStorage.getItem('auth_token') || '';
+}
+
+function setAuthToken(token) {
+  localStorage.setItem('auth_token', token);
+}
+
+function removeAuthToken() {
+  localStorage.removeItem('auth_token');
+}
+
+// API Request Helper with Authentication
 async function apiRequest(url, method = 'GET', body = null) {
   try {
     const options = {
       method,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-auth-token': getAuthToken()
+      }
     };
     if (body) options.body = JSON.stringify(body);
     const res = await fetch(url, options);
+    
+    // 410 혹은 401 에러 시 강제 로그인 모달 노출
+    if (res.status === 401) {
+      showLoginModal();
+      throw new Error('인증 정보가 유효하지 않습니다. 다시 로그인해 주세요.');
+    }
+    
     if (!res.ok) {
       const data = await res.json();
       throw new Error(data.error || 'API 요청 실패');
     }
     return await res.json();
   } catch (err) {
-    appendTerminalLine(`[API 오류] ${err.message}`, 'error');
+    if (url !== '/api/login') {
+      appendTerminalLine(`[API 오류] ${err.message}`, 'error');
+    }
     throw err;
   }
 }
@@ -82,6 +116,51 @@ function appendTerminalLine(text, type = '') {
   errorLogContainer.appendChild(line);
   errorLogContainer.scrollTop = errorLogContainer.scrollHeight;
 }
+
+// 0. 로그인 처리
+function showLoginModal() {
+  loginModal.style.display = 'flex';
+  loginModal.classList.add('show');
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
+}
+
+function hideLoginModal() {
+  loginModal.style.display = 'none';
+  loginModal.classList.remove('show');
+}
+
+async function handleLoginSubmit(e) {
+  e.preventDefault();
+  loginErrorMsg.style.display = 'none';
+  
+  const payload = {
+    username: loginUsernameInput.value.trim(),
+    password: loginPasswordInput.value
+  };
+
+  try {
+    const res = await apiRequest('/api/login', 'POST', payload);
+    setAuthToken(res.token);
+    hideLoginModal();
+    appendTerminalLine('로그인 인증 성공', 'success');
+    
+    // 대시보드 동기화 시작
+    startDashboardSync();
+  } catch (err) {
+    loginErrorMsg.style.display = 'block';
+    loginErrorMsg.innerText = err.message || '아이디/비밀번호가 올바르지 않습니다.';
+  }
+}
+
+logoutBtn.addEventListener('click', () => {
+  removeAuthToken();
+  appendTerminalLine('로그아웃 완료', 'system-msg');
+  showLoginModal();
+  location.reload();
+});
 
 // 1. 시스템 실시간 상태 및 로그 동기화
 async function syncDashboard() {
@@ -196,7 +275,9 @@ function renderErrorLogs(errors) {
 
 // 2. 업체 CRUD
 async function loadCompaniesConfig() {
-  companiesConfig = await apiRequest('/api/companies');
+  try {
+    companiesConfig = await apiRequest('/api/companies');
+  } catch (e) {}
 }
 
 function openRegisterModal() {
@@ -223,7 +304,7 @@ async function openEditModal(id) {
   dbServerInput.value = comp.db_server;
   dbPortInput.value = comp.db_port;
   dbUserInput.value = comp.db_user;
-  dbPasswordInput.value = comp.db_password;
+  dbPasswordInput.value = comp.db_password; // 마스킹 비밀번호(********)가 세팅됨
   dbDatabaseInput.value = comp.db_database;
   socketHostInput.value = comp.socket_host;
   socketPortInput.value = comp.socket_port;
@@ -244,7 +325,7 @@ async function handleFormSubmit(e) {
     db_server: dbServerInput.value.trim(),
     db_port: parseInt(dbPortInput.value),
     db_user: dbUserInput.value.trim(),
-    db_password: dbPasswordInput.value,
+    db_password: dbPasswordInput.value, // 수정하지 않았으면 ******** 그대로 감
     db_database: dbDatabaseInput.value.trim(),
     socket_host: socketHostInput.value.trim(),
     socket_port: parseInt(socketPortInput.value),
@@ -278,7 +359,7 @@ async function openSystemModal() {
   try {
     const sysConfig = await apiRequest('/api/config/system');
     
-    // SMS DB 세팅
+    // SMS DB 세팅 (패스워드는 ******** 마스킹으로 세팅됨)
     sysSmsServerInput.value = sysConfig.sms_db.server || '';
     sysSmsPortInput.value = sysConfig.sms_db.port || 1433;
     sysSmsUserInput.value = sysConfig.sms_db.user || 'sa';
@@ -334,10 +415,9 @@ async function handleSystemFormSubmit(e) {
     closeSystemModal();
     syncDashboard();
     
-    // 포트가 변경되었을 수 있음을 안내
     const currentPort = window.location.port;
     if (payload.web_port !== parseInt(currentPort)) {
-      alert(`웹 서비스 포트가 ${payload.web_port}번으로 변경되었습니다. 새로운 포트로 재접속이 필요할 수 있습니다.`);
+      alert(`웹 서비스 포트가 ${payload.web_port}번으로 변경되었습니다. 새로운 포트로 재접속해 주세요.`);
     }
   } catch (err) {
     alert(`시스템 설정 변경 실패: ${err.message}`);
@@ -387,8 +467,22 @@ clearErrorLog.addEventListener('click', () => {
   errorLogContainer.innerHTML = '<div class="terminal-line system-msg">[SYSTEM] 로그가 초기화되었습니다.</div>';
 });
 
-// Init & Start periodic sync
-syncDashboard();
-setInterval(syncDashboard, 3000);
-loadCompaniesConfig();
-appendTerminalLine('대시보드 실시간 동기화 스케줄러 시작됨 (3s 주기)', 'system-msg');
+// Auth Event Listeners
+loginForm.addEventListener('submit', handleLoginSubmit);
+
+// Start dashboard synchronization
+function startDashboardSync() {
+  syncDashboard();
+  if (syncInterval) clearInterval(syncInterval);
+  syncInterval = setInterval(syncDashboard, 3000);
+  loadCompaniesConfig();
+  appendTerminalLine('대시보드 실시간 동기화 시작 (3초 주기)', 'system-msg');
+}
+
+// 초기 검증 진입
+if (!getAuthToken()) {
+  showLoginModal();
+} else {
+  // 저장된 토큰이 유효한지 헬스체크 겸해서 동기화 시작
+  startDashboardSync();
+}
