@@ -76,7 +76,7 @@ async function processMatch(smsData, companies) {
 
     const compPool = db.getCompanyPool(company.id);
     if (!compPool) {
-      continue; // 풀이 없거나 비활성화인 경우 생략
+      continue;
     }
 
     try {
@@ -86,7 +86,6 @@ async function processMatch(smsData, companies) {
       request.input('amt', sql.Decimal(18, 0), inout_amt);
 
       if (inout_tp === '입금') {
-        // 1. 입금 신청 대기 건 조회 (IO_TP = '1', RSLT_TP = '0', 이름 유사 일치, 금액 일치)
         query = `
           SELECT TOP 1 USER_ID, RQST_TM, RQST_AMT 
           FROM INOUT 
@@ -96,7 +95,6 @@ async function processMatch(smsData, companies) {
           ORDER BY RQST_TM ASC
         `;
       } else {
-        // 2. 출금 신청 대기 건 조회 (IO_TP = '2', RSLT_TP = '0', 이름 완전 일치, 금액 1000원 오차 범위)
         const amtMin = inout_amt - 1000;
         request.input('amtMin', sql.Decimal(18, 0), amtMin);
         
@@ -120,7 +118,7 @@ async function processMatch(smsData, companies) {
         await compPool.request()
           .input('userId', sql.VarChar, USER_ID)
           .input('rqstTm', sql.VarChar, RQST_TM)
-          .input('rsltTp', sql.VarChar, '1') // 승인
+          .input('rsltTp', sql.VarChar, '1')
           .input('rqstAmt', sql.Decimal(18, 0), RQST_AMT)
           .input('processor', sql.VarChar, 'Alpha-go')
           .input('dummy', sql.VarChar, '')
@@ -156,7 +154,7 @@ async function processMatch(smsData, companies) {
         });
 
         matched = true;
-        break; // 하나의 문자는 한 업체에서만 처리되므로 루프 이탈
+        break;
       }
     } catch (err) {
       addErrorLog(`업체 [${company.name}] 매칭 처리 중 DB 에러:`, err);
@@ -176,7 +174,6 @@ function startPeriodicScheduler(getCompaniesFn, intervalMs = 30000) {
     if (!bankPool) return;
 
     try {
-      // BANK 테이블에서 TP='1'인 미처리 대기 건 조회
       const res = await bankPool.request()
         .query("SELECT TOP 50 DT, BANK_NO, JANGO, INOUT_AMT, INOUT_TP, BANK_NM, TM FROM BANK WHERE TP = '1' ORDER BY DT DESC, TM DESC");
 
@@ -205,9 +202,19 @@ function startPeriodicScheduler(getCompaniesFn, intervalMs = 30000) {
   }, intervalMs);
 }
 
+// 스케줄러 중지 함수
+function stopPeriodicScheduler() {
+  if (periodicTimer) {
+    clearInterval(periodicTimer);
+    periodicTimer = null;
+    console.log('[스케줄러] 과거 미처리 재매칭 스케줄러 중지 완료.');
+  }
+}
+
 module.exports = {
   processMatch,
   startPeriodicScheduler,
+  stopPeriodicScheduler,
   successLogs,
   errorLogs,
   addErrorLog,

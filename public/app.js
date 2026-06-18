@@ -3,6 +3,7 @@
 // DOM Elements
 const smsDbStatus = document.getElementById('sms-db-status');
 const bankDbStatus = document.getElementById('bank-db-status');
+const engineStatus = document.getElementById('engine-status');
 const companyCount = document.getElementById('company-count');
 const companiesList = document.getElementById('companies-list');
 const successLogBody = document.getElementById('success-log-body');
@@ -61,6 +62,7 @@ const loginErrorMsg = document.getElementById('login-error-msg');
 let isEditMode = false;
 let companiesConfig = [];
 let syncInterval = null;
+let currentEngineActive = true; // 현재 자동승인 구동 상태 보관용
 
 // Auth Token Management
 function getAuthToken() {
@@ -75,7 +77,7 @@ function removeAuthToken() {
   localStorage.removeItem('auth_token');
 }
 
-// API Request Helper with Authentication
+// API Request Helper
 async function apiRequest(url, method = 'GET', body = null) {
   try {
     const options = {
@@ -88,7 +90,6 @@ async function apiRequest(url, method = 'GET', body = null) {
     if (body) options.body = JSON.stringify(body);
     const res = await fetch(url, options);
     
-    // 410 혹은 401 에러 시 강제 로그인 모달 노출
     if (res.status === 401) {
       showLoginModal();
       throw new Error('인증 정보가 유효하지 않습니다. 다시 로그인해 주세요.');
@@ -146,8 +147,6 @@ async function handleLoginSubmit(e) {
     setAuthToken(res.token);
     hideLoginModal();
     appendTerminalLine('로그인 인증 성공', 'success');
-    
-    // 대시보드 동기화 시작
     startDashboardSync();
   } catch (err) {
     loginErrorMsg.style.display = 'block';
@@ -170,6 +169,20 @@ async function syncDashboard() {
     updateLed(smsDbStatus.querySelector('.led'), status.sms_db);
     updateLed(bankDbStatus.querySelector('.led'), status.bank_db);
     
+    // 엔진 상태 업데이트
+    currentEngineActive = status.engine_active;
+    const engineLed = engineStatus.querySelector('.led');
+    updateLed(engineLed, currentEngineActive);
+    
+    if (currentEngineActive) {
+      engineStatus.innerHTML = '<span class="led green"></span> 자동승인 ON';
+      engineStatus.className = 'status-indicator glass-card';
+    } else {
+      engineStatus.innerHTML = '<span class="led red"></span> 자동승인 OFF';
+      // 꺼져 있을 때 시각적 피드백 제공 (정지 상태 부각)
+      engineStatus.className = 'status-indicator glass-card';
+    }
+
     renderCompanies(status.companies);
 
     const logs = await apiRequest('/api/logs');
@@ -182,10 +195,12 @@ async function syncDashboard() {
 }
 
 function updateLed(ledEl, isGreen) {
-  if (isGreen) {
-    ledEl.className = 'led green';
-  } else {
-    ledEl.className = 'led red';
+  if (ledEl) {
+    if (isGreen) {
+      ledEl.className = 'led green';
+    } else {
+      ledEl.className = 'led red';
+    }
   }
 }
 
@@ -304,7 +319,7 @@ async function openEditModal(id) {
   dbServerInput.value = comp.db_server;
   dbPortInput.value = comp.db_port;
   dbUserInput.value = comp.db_user;
-  dbPasswordInput.value = comp.db_password; // 마스킹 비밀번호(********)가 세팅됨
+  dbPasswordInput.value = comp.db_password;
   dbDatabaseInput.value = comp.db_database;
   socketHostInput.value = comp.socket_host;
   socketPortInput.value = comp.socket_port;
@@ -325,7 +340,7 @@ async function handleFormSubmit(e) {
     db_server: dbServerInput.value.trim(),
     db_port: parseInt(dbPortInput.value),
     db_user: dbUserInput.value.trim(),
-    db_password: dbPasswordInput.value, // 수정하지 않았으면 ******** 그대로 감
+    db_password: dbPasswordInput.value,
     db_database: dbDatabaseInput.value.trim(),
     socket_host: socketHostInput.value.trim(),
     socket_port: parseInt(socketPortInput.value),
@@ -359,21 +374,18 @@ async function openSystemModal() {
   try {
     const sysConfig = await apiRequest('/api/config/system');
     
-    // SMS DB 세팅 (패스워드는 ******** 마스킹으로 세팅됨)
     sysSmsServerInput.value = sysConfig.sms_db.server || '';
     sysSmsPortInput.value = sysConfig.sms_db.port || 1433;
     sysSmsUserInput.value = sysConfig.sms_db.user || 'sa';
     sysSmsPasswordInput.value = sysConfig.sms_db.password || '';
     sysSmsDatabaseInput.value = sysConfig.sms_db.database || 'DSBH_SMS';
     
-    // BANK DB 세팅
     sysBankServerInput.value = sysConfig.bank_db.server || '';
     sysBankPortInput.value = sysConfig.bank_db.port || 1433;
     sysBankUserInput.value = sysConfig.bank_db.user || 'sa';
     sysBankPasswordInput.value = sysConfig.bank_db.password || '';
     sysBankDatabaseInput.value = sysConfig.bank_db.database || 'DSBH_2';
     
-    // 포트 세팅
     sysWebPortInput.value = sysConfig.web_port || 3000;
 
     systemModal.classList.add('show');
@@ -424,7 +436,24 @@ async function handleSystemFormSubmit(e) {
   }
 }
 
-// 4. 연결 테스트
+// 4. 엔진 ON-OFF 토글 기능 (사용자 리모컨 기능)
+engineStatus.addEventListener('click', async () => {
+  const targetState = !currentEngineActive;
+  const actionText = targetState ? '시작' : '일시정지';
+  if (!confirm(`자동 매칭 승인 엔진을 ${actionText}하시겠습니까?`)) return;
+
+  try {
+    const res = await apiRequest('/api/config/engine', 'POST', { active: targetState });
+    currentEngineActive = res.engine_active;
+    
+    appendTerminalLine(`관리자 조작: 자동 매칭 엔진 ${actionText} 완료`, 'system-msg');
+    syncDashboard();
+  } catch (err) {
+    alert(`자동 매칭 엔진 제어 실패: ${err.message}`);
+  }
+});
+
+// 5. 연결 테스트
 testConnBtn.addEventListener('click', async () => {
   testConnBtn.innerText = '연결 중...';
   testConnBtn.disabled = true;
@@ -476,13 +505,11 @@ function startDashboardSync() {
   if (syncInterval) clearInterval(syncInterval);
   syncInterval = setInterval(syncDashboard, 3000);
   loadCompaniesConfig();
-  appendTerminalLine('대시보드 실시간 동기화 시작 (3초 주기)', 'system-msg');
 }
 
 // 초기 검증 진입
 if (!getAuthToken()) {
   showLoginModal();
 } else {
-  // 저장된 토큰이 유효한지 헬스체크 겸해서 동기화 시작
   startDashboardSync();
 }
