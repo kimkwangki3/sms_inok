@@ -1,4 +1,4 @@
-﻿const path = require('path');
+const path = require('path');
 const fs = require('fs');
 const db = require('./src/db');
 const watcher = require('./src/watcher');
@@ -46,9 +46,9 @@ async function main() {
       matcher.addErrorLog('SMS 감시기 이벤트 에러 발생:', err);
     });
 
-    // 5. 과거 미처리 누적 건 재매칭 백그라운드 스케줄러 가동 (30초 주기)
-    matcher.startPeriodicScheduler(() => config.companies, 30000);
-    console.log('[SYSTEM] 과거 미처리 대기 건 주기적 재매칭 스케줄러 가동 완료 (30초 주기)');
+    // 5. 과거 미처리 누적 건 재매칭 백그라운드 스케줄러 가동 (3초 주기)
+    matcher.startPeriodicScheduler(() => config.companies, 3000);
+    console.log('[SYSTEM] 과거 미처리 대기 건 주기적 재매칭 스케줄러 가동 완료 (3초 주기)');
 
     // 6. 대시보드 API 및 Express 웹 서버 구동
     const app = createServer(CONFIG_PATH, config, updateRuntimeConfig);

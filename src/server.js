@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
@@ -241,7 +241,7 @@ function createServer(configPath, config, updateConfigCallback) {
       if (active === true && !isEngineActive) {
         // 엔진 가동 시작
         await watcher.start();
-        matcher.startPeriodicScheduler(() => config.companies, 30000);
+        matcher.startPeriodicScheduler(() => config.companies, 3000);
         isEngineActive = true;
         console.log('[대시보드] 관리자에 의해 자동 매칭 엔진이 가동되었습니다.');
         matcher.addSuccessLog({ seqno: 'SYSTEM', company: 'ENGINE', user_id: 'SYSTEM', bank_nm: '엔진 구동 시작', amount: 0, type: '입금' });

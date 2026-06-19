@@ -1,6 +1,7 @@
-﻿const db = require('./db');
+const db = require('./db');
 const sql = require('mssql');
 const net = require('net');
+const iconv = require('iconv-lite');
 
 const successLogs = [];
 const errorLogs = [];
@@ -18,6 +19,16 @@ function addErrorLog(message, err = null) {
   console.error(`[에러] ${message}`, err || '');
 }
 
+// EUC-KR 버퍼용 바이트 패딩 헬퍼 함수
+function padBufferEUCKR(str, targetByteLen, padChar = ' ') {
+  const buf = iconv.encode(str, 'euc-kr');
+  if (buf.length >= targetByteLen) {
+    return buf.subarray(0, targetByteLen);
+  }
+  const padBuf = Buffer.alloc(targetByteLen - buf.length, padChar);
+  return Buffer.concat([buf, padBuf]);
+}
+
 // 20200 포트 소켓 알림 전송 함수 (비동기)
 function sendSocketNotification(host, port, userId, amount, isDeposit) {
   return new Promise((resolve) => {
@@ -27,15 +38,19 @@ function sendSocketNotification(host, port, userId, amount, isDeposit) {
       const formattedAmt = Number(amount).toLocaleString();
       const text = isDeposit ? '입금처리가 완료되었습니다.' : '출금이 처리되었습니다.';
       
-      const msg = (formattedAmt + text).padEnd(50, ' ');
-      const userIdPad = userId.padEnd(20, ' ');
-      const packet = a + userIdPad + b + msg + 'Y';
+      const bufA = iconv.encode(a, 'euc-kr'); // 8바이트
+      const bufUserId = padBufferEUCKR(userId, 20); // 20바이트
+      const bufB = iconv.encode(b, 'euc-kr'); // 14바이트
+      const bufMsg = padBufferEUCKR(formattedAmt + text, 50); // 50바이트
+      const bufTail = iconv.encode('Y', 'euc-kr'); // 1바이트
+
+      const packetBuffer = Buffer.concat([bufA, bufUserId, bufB, bufMsg, bufTail]);
 
       const client = new net.Socket();
       client.setTimeout(3000); // 3초 타임아웃
       
       client.connect(port, host, () => {
-        client.write(packet);
+        client.write(packetBuffer);
         client.end();
       });
 
