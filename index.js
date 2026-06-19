@@ -10,7 +10,9 @@ const CONFIG_PATH = path.join(__dirname, 'config.json');
 // 1. 설정 파일 로드
 let config = {};
 try {
-  const configRaw = fs.readFileSync(CONFIG_PATH, 'utf8');
+  let configRaw = fs.readFileSync(CONFIG_PATH, 'utf8');
+  // UTF-8 BOM 문자(\uFEFF)가 있을 경우 제거
+  configRaw = configRaw.replace(/^\uFEFF/, '');
   config = JSON.parse(configRaw);
 } catch (err) {
   console.error('설정 파일(config.json)을 로드하지 못했습니다.', err);
