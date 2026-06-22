@@ -634,57 +634,56 @@ function renderAuditTable(records) {
   records.forEach(row => {
     const tr = document.createElement('tr');
     
-    // 1. 실제 출금 내역 (SMS)
-    const timeTd = `<td>${row.tm}</td>`;
-    const nameTd = `<td><strong>${row.bank_nm}</strong></td>`;
-    const amtTd = `<td>${Number(row.inout_amt).toLocaleString()}원</td>`;
-    
-    const isMatched = row.tp === '2';
-    const statusTd = `
-      <td>
-        <span class="badge-status ${isMatched ? 'success' : 'fail'}">
-          ${isMatched ? '매칭 완료' : '미매칭'}
-        </span>
-      </td>
+    // 1. 출금 신청 내역 (사이트) - 왼쪽
+    const requestTds = `
+      <td>${formatRqstTm(row.rqst_tm)}</td>
+      <td><strong>[${row.company_name}]</strong></td>
+      <td>${row.user_id}</td>
+      <td>${row.acnt_nm}</td>
+      <td>${Number(row.rqst_amt).toLocaleString()}원</td>
     `;
 
-    // 2. 출금 신청 내역 (사이트) 대조
-    let requestTds = '';
+    // 2. 실제 출금 내역 (SMS 수신) 대조 - 오른쪽 (첫 셀에 line-left 적용)
+    let smsTds = '';
     
-    if (row.matched_request) {
-      // 매칭된 건 정보 표시
-      const req = row.matched_request;
-      requestTds = `
-        <td class="line-left"><strong>[${req.company_name}]</strong></td>
-        <td>${req.user_id}</td>
-        <td>${req.acnt_nm}</td>
-        <td>${Number(req.rqst_amt).toLocaleString()}원</td>
-        <td>${formatRqstTm(req.rqst_tm)}</td>
+    if (row.matched_sms) {
+      // 매칭된 실제 출금 SMS 정보 표시
+      const sms = row.matched_sms;
+      const isSmsMatched = sms.tp === '2';
+      smsTds = `
+        <td class="line-left">${sms.tm}</td>
+        <td><strong>${sms.bank_nm}</strong></td>
+        <td>${Number(sms.inout_amt).toLocaleString()}원</td>
+        <td>
+          <span class="badge-status ${isSmsMatched ? 'success' : 'fail'}">
+            ${isSmsMatched ? '매칭 완료' : '미매칭'}
+          </span>
+        </td>
       `;
-    } else if (row.possible_requests && row.possible_requests.length > 0) {
-      // 미매칭이지만 매칭 후보군이 있는 경우 리스트 형식으로 뿌림
-      const possibleItems = row.possible_requests.map(r => `
-        <li class="possible-item" title="신청시간: ${formatRqstTm(r.rqst_tm)}">
-          [${r.company_name}] ${r.user_id} | ${r.acnt_nm} | ${Number(r.rqst_amt).toLocaleString()}원
+    } else if (row.possible_sms_list && row.possible_sms_list.length > 0) {
+      // 매칭되지 않고 유사한 실제 출금 후보 목록 표시 (이름/금액 불일치 구분 가능)
+      const possibleItems = row.possible_sms_list.map(s => `
+        <li class="possible-item" title="출금시간: ${s.tm}">
+          [${s.reason}] 시간: ${s.tm} | 예금주: ${s.bank_nm} | 금액: ${Number(s.inout_amt).toLocaleString()}원
         </li>
       `).join('');
       
-      requestTds = `
-        <td colspan="5" class="line-left" style="background: rgba(245, 158, 11, 0.03); vertical-align: top;">
-          <div style="font-size: 11px; font-weight: 600; color: var(--warning-color); margin-bottom: 4px;">⚠️ 미승인 매칭 후보군 (${row.possible_requests.length}건):</div>
+      smsTds = `
+        <td colspan="4" class="line-left" style="background: rgba(245, 158, 11, 0.03); vertical-align: top;">
+          <div style="font-size: 11px; font-weight: 600; color: var(--warning-color); margin-bottom: 4px;">⚠️ 미매칭 실제 출금 후보 (${row.possible_sms_list.length}건):</div>
           <ul class="possible-list">${possibleItems}</ul>
         </td>
       `;
     } else {
-      // 매칭 정보 및 후보군이 완전히 없는 경우
-      requestTds = `
-        <td colspan="5" class="line-left text-center" style="color: var(--text-muted); font-style: italic;">
-          - (일치하는 출금 신청 없음) -
+      // 실제 출금 기록이 아예 검색되지 않은 경우
+      smsTds = `
+        <td colspan="4" class="line-left text-center" style="color: var(--text-muted); font-style: italic;">
+          - (일치하는 출금 문자 내역 없음) -
         </td>
       `;
     }
 
-    tr.innerHTML = timeTd + nameTd + amtTd + statusTd + requestTds;
+    tr.innerHTML = requestTds + smsTds;
     auditLogBody.appendChild(tr);
   });
 }
