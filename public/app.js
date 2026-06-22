@@ -574,14 +574,13 @@ function getTodayFormatted() {
   return `${year}.${month}.${day}`;
 }
 
-// RQST_TM 포맷터 (YYYYMMDDHHmmss -> HH:mm:ss)
+// RQST_TM 포맷터 (HH:mm:ss:SSS -> HH:mm:ss)
 function formatRqstTm(tmStr) {
-  if (!tmStr || tmStr.length < 14) return tmStr || '';
-  // YYYYMMDDHHmmss
-  const hour = tmStr.substring(8, 10);
-  const min = tmStr.substring(10, 12);
-  const sec = tmStr.substring(12, 14);
-  return `${hour}:${min}:${sec}`;
+  if (!tmStr) return '';
+  if (tmStr.includes(':')) {
+    return tmStr.substring(0, 8);
+  }
+  return tmStr;
 }
 
 // ==========================================

@@ -320,13 +320,13 @@ function createServer(configPath, config, updateConfigCallback) {
 
         try {
           const inoutResult = await compPool.request()
-            .input('startTm', sql.VarChar, startTm)
-            .input('endTm', sql.VarChar, endTm)
+            .input('startDateRaw', sql.VarChar, startDateRaw)
+            .input('endDateRaw', sql.VarChar, endDateRaw)
             .query(`
               SELECT USER_ID, RQST_TM, RQST_AMT, USER_BANK_ACNT_NM, RSLT_TP 
               FROM INOUT 
               WHERE IO_TP = '2' 
-                AND RQST_TM BETWEEN @startTm AND @endTm 
+                AND RQST_TRADE_DT BETWEEN @startDateRaw AND @endDateRaw 
               ORDER BY RQST_TM DESC
             `);
 
@@ -335,7 +335,7 @@ function createServer(configPath, config, updateConfigCallback) {
           for (const req of requests) {
             const rqstAmt = parseFloat(req.RQST_AMT) || 0;
             const acntNm = (req.USER_BANK_ACNT_NM || '').trim();
-            const rqstTm = req.RQST_TM;
+            const rqstTm = (req.RQST_TM || '').trim();
 
             let matchedSms = null;
             const possibleSmsList = [];
