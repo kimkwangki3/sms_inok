@@ -303,7 +303,7 @@ function createServer(configPath, config, updateConfigCallback) {
       const bankStartDate = `${marginSDate.getFullYear()}.${pad(marginSDate.getMonth() + 1)}.${pad(marginSDate.getDate())}`;
       const bankEndDate = `${marginEDate.getFullYear()}.${pad(marginEDate.getMonth() + 1)}.${pad(marginEDate.getDate())}`;
 
-      // 1. BANK 테이블에서 앞뒤 1일 여유를 둔 실제 출금 내역 조회
+      // 1. BANK 테이블에서 앞뒤 1일 여유를 둔 실제 출금 내역 조회 (공백 제거 매칭 적용)
       const bankResult = await bankPool.request()
         .input('bankStartDate', sql.VarChar, bankStartDate)
         .input('bankEndDate', sql.VarChar, bankEndDate)
@@ -311,7 +311,7 @@ function createServer(configPath, config, updateConfigCallback) {
           SELECT DT, TM, BANK_NO, INOUT_AMT, BANK_NM, TP 
           FROM BANK 
           WHERE INOUT_TP = '출금' 
-            AND DT BETWEEN @bankStartDate AND @bankEndDate 
+            AND LTRIM(RTRIM(DT)) BETWEEN @bankStartDate AND @bankEndDate 
           ORDER BY DT DESC, TM DESC
         `);
       const bankSmsList = bankResult.recordset.map(sms => ({
