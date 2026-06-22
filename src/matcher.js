@@ -2,6 +2,7 @@ const db = require('./db');
 const sql = require('mssql');
 const net = require('net');
 const iconv = require('iconv-lite');
+const parser = require('./parser');
 
 const successLogs = [];
 const errorLogs = [];
@@ -81,10 +82,11 @@ function sendSocketNotification(host, port, userId, amount, isDeposit) {
 
 // 입출금 매칭 핵심 로직
 async function processMatch(smsData, companies) {
-  const { seqno, dt, tm, bank_no, inout_amt, inout_tp, bank_nm } = smsData;
+  const { seqno, dt, tm, bank_no, inout_amt, inout_tp } = smsData;
+  const bank_nm = parser.cleanBankName((smsData.bank_nm || '').trim());
   
   // 동시성 레이스 컨디션 방지를 위한 고유 매칭 키 생성
-  const matchKey = `${dt.trim()}_${bank_no.trim()}_${inout_amt}_${inout_tp}_${bank_nm.trim()}`;
+  const matchKey = `${dt.trim()}_${bank_no.trim()}_${inout_amt}_${inout_tp}_${bank_nm}`;
   if (activeMatches.has(matchKey)) {
     console.log(`[동시성 방지] 이미 매칭 처리 중인 건입니다. (Key: ${matchKey})`);
     return false;

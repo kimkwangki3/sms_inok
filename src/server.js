@@ -7,6 +7,7 @@ const sql = require('mssql');
 const db = require('./db');
 const watcher = require('./watcher');
 const matcher = require('./matcher');
+const parser = require('./parser');
 
 // 대시보드 로그인 정보 고정
 const AUTH_USER = 'admin';
@@ -305,7 +306,7 @@ function createServer(configPath, config, updateConfigCallback) {
         tm: (sms.TM || '').trim(),
         bank_no: (sms.BANK_NO || '').trim(),
         inout_amt: parseFloat(sms.INOUT_AMT) || 0,
-        bank_nm: (sms.BANK_NM || '').trim(),
+        bank_nm: parser.cleanBankName((sms.BANK_NM || '').trim()),
         tp: sms.TP
       }));
 

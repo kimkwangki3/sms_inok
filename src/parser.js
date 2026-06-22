@@ -204,5 +204,6 @@ function parseSMS(rNum, message) {
 }
 
 module.exports = {
-  parseSMS
+  parseSMS,
+  cleanBankName
 };
