@@ -1,4 +1,4 @@
-﻿const API_BASE = '';
+const API_BASE = '';
 
 // DOM Elements
 const smsDbStatus = document.getElementById('sms-db-status');
@@ -512,4 +512,179 @@ if (!getAuthToken()) {
   showLoginModal();
 } else {
   startDashboardSync();
+}
+
+// ==========================================
+// 6. 탭 네비게이션 제어
+// ==========================================
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabContents = document.querySelectorAll('.tab-content');
+
+tabButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const targetTab = btn.getAttribute('data-tab');
+    
+    // 버튼 active 상태 변경
+    tabButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    
+    // 콘텐츠 active 상태 변경
+    tabContents.forEach(content => {
+      if (content.id === targetTab) {
+        content.style.display = '';
+        content.classList.add('active-tab');
+      } else {
+        content.style.display = 'none';
+        content.classList.remove('active-tab');
+      }
+    });
+
+    // 탭별 추가 동작 제어 (대시보드는 실시간 동기화, 검수는 정지)
+    if (targetTab === 'dashboard-tab') {
+      if (getAuthToken()) startDashboardSync();
+    } else if (targetTab === 'audit-tab') {
+      if (syncInterval) {
+        clearInterval(syncInterval);
+        syncInterval = null;
+      }
+      initAuditTab();
+    }
+  });
+});
+
+// 출금 검수 탭 초기화
+function initAuditTab() {
+  const startDateInput = document.getElementById('audit-start-date');
+  const endDateInput = document.getElementById('audit-end-date');
+  
+  // 날짜 설정이 비어 있는 경우에만 오늘 날짜로 초기화
+  if (!startDateInput.value || !endDateInput.value) {
+    const todayStr = getTodayFormatted();
+    startDateInput.value = todayStr;
+    endDateInput.value = todayStr;
+  }
+}
+
+// 오늘 날짜 포맷팅 헬퍼 (YYYY.MM.DD)
+function getTodayFormatted() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}.${month}.${day}`;
+}
+
+// RQST_TM 포맷터 (YYYYMMDDHHmmss -> HH:mm:ss)
+function formatRqstTm(tmStr) {
+  if (!tmStr || tmStr.length < 14) return tmStr || '';
+  // YYYYMMDDHHmmss
+  const hour = tmStr.substring(8, 10);
+  const min = tmStr.substring(10, 12);
+  const sec = tmStr.substring(12, 14);
+  return `${hour}:${min}:${sec}`;
+}
+
+// ==========================================
+// 7. 출금 검수 조회 및 렌더링
+// ==========================================
+const auditSearchBtn = document.getElementById('audit-search-btn');
+const auditLogBody = document.getElementById('audit-log-body');
+const auditCountBadge = document.getElementById('audit-count');
+
+if (auditSearchBtn) {
+  auditSearchBtn.addEventListener('click', loadAuditData);
+}
+
+async function loadAuditData() {
+  const startDate = document.getElementById('audit-start-date').value.trim();
+  const endDate = document.getElementById('audit-end-date').value.trim();
+  const unmatchedOnly = document.getElementById('audit-unmatched-only').checked;
+
+  if (!startDate || !endDate) {
+    alert('시작일과 종료일을 입력해주세요.');
+    return;
+  }
+
+  auditSearchBtn.innerText = '조회 중...';
+  auditSearchBtn.disabled = true;
+  auditLogBody.innerHTML = '<tr><td colspan="9" class="empty-row"><div class="loading-spinner">검수 내역 조회 중...</div></td></tr>';
+
+  try {
+    const url = `/api/audit/withdrawals?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&unmatched_only=${unmatchedOnly}`;
+    const data = await apiRequest(url);
+    
+    renderAuditTable(data);
+  } catch (err) {
+    auditLogBody.innerHTML = `<tr><td colspan="9" class="empty-row error-row">데이터 조회 실패: ${err.message}</td></tr>`;
+  } finally {
+    auditSearchBtn.innerText = '🔍 조회하기';
+    auditSearchBtn.disabled = false;
+  }
+}
+
+function renderAuditTable(records) {
+  auditLogBody.innerHTML = '';
+  auditCountBadge.innerText = `${records.length}건 조회됨`;
+
+  if (records.length === 0) {
+    auditLogBody.innerHTML = '<tr><td colspan="9" class="empty-row">조회 결과가 없습니다.</td></tr>';
+    return;
+  }
+
+  records.forEach(row => {
+    const tr = document.createElement('tr');
+    
+    // 1. 실제 출금 내역 (SMS)
+    const timeTd = `<td>${row.tm}</td>`;
+    const nameTd = `<td><strong>${row.bank_nm}</strong></td>`;
+    const amtTd = `<td>${Number(row.inout_amt).toLocaleString()}원</td>`;
+    
+    const isMatched = row.tp === '2';
+    const statusTd = `
+      <td>
+        <span class="badge-status ${isMatched ? 'success' : 'fail'}">
+          ${isMatched ? '매칭 완료' : '미매칭'}
+        </span>
+      </td>
+    `;
+
+    // 2. 출금 신청 내역 (사이트) 대조
+    let requestTds = '';
+    
+    if (row.matched_request) {
+      // 매칭된 건 정보 표시
+      const req = row.matched_request;
+      requestTds = `
+        <td class="line-left"><strong>[${req.company_name}]</strong></td>
+        <td>${req.user_id}</td>
+        <td>${req.acnt_nm}</td>
+        <td>${Number(req.rqst_amt).toLocaleString()}원</td>
+        <td>${formatRqstTm(req.rqst_tm)}</td>
+      `;
+    } else if (row.possible_requests && row.possible_requests.length > 0) {
+      // 미매칭이지만 매칭 후보군이 있는 경우 리스트 형식으로 뿌림
+      const possibleItems = row.possible_requests.map(r => `
+        <li class="possible-item" title="신청시간: ${formatRqstTm(r.rqst_tm)}">
+          [${r.company_name}] ${r.user_id} | ${r.acnt_nm} | ${Number(r.rqst_amt).toLocaleString()}원
+        </li>
+      `).join('');
+      
+      requestTds = `
+        <td colspan="5" class="line-left" style="background: rgba(245, 158, 11, 0.03); vertical-align: top;">
+          <div style="font-size: 11px; font-weight: 600; color: var(--warning-color); margin-bottom: 4px;">⚠️ 미승인 매칭 후보군 (${row.possible_requests.length}건):</div>
+          <ul class="possible-list">${possibleItems}</ul>
+        </td>
+      `;
+    } else {
+      // 매칭 정보 및 후보군이 완전히 없는 경우
+      requestTds = `
+        <td colspan="5" class="line-left text-center" style="color: var(--text-muted); font-style: italic;">
+          - (일치하는 출금 신청 없음) -
+        </td>
+      `;
+    }
+
+    tr.innerHTML = timeTd + nameTd + amtTd + statusTd + requestTds;
+    auditLogBody.appendChild(tr);
+  });
 }

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
@@ -36,59 +36,134 @@
       </div>
     </header>
 
-    <!-- Main Content Grid -->
-    <main class="dashboard-grid">
+    <!-- Tab Navigation -->
+    <div class="tab-nav-wrapper glass-card">
+      <button class="tab-btn active" data-tab="dashboard-tab">📊 실시간 대시보드</button>
+      <button class="tab-btn" data-tab="audit-tab">🔍 출금 매칭 검수</button>
+    </div>
+
+    <!-- Tab Contents -->
+    <div class="tab-container-wrapper">
       
-      <!-- 1. 업체 상태 카드 영역 -->
-      <section class="grid-item glass-card card-half">
-        <div class="card-header">
-          <h2>업체별 실시간 모니터링</h2>
-          <span class="badge" id="company-count">0개 등록됨</span>
-        </div>
-        <div class="companies-container" id="companies-list">
-          <div class="loading-spinner">데이터를 불러오는 중...</div>
-        </div>
-      </section>
+      <!-- 1. 대시보드 탭 -->
+      <div id="dashboard-tab" class="tab-content active-tab">
+        <main class="dashboard-grid">
+          
+          <!-- 1. 업체 상태 카드 영역 -->
+          <section class="grid-item glass-card card-half">
+            <div class="card-header">
+              <h2>업체별 실시간 모니터링</h2>
+              <span class="badge" id="company-count">0개 등록됨</span>
+            </div>
+            <div class="companies-container" id="companies-list">
+              <div class="loading-spinner">데이터를 불러오는 중...</div>
+            </div>
+          </section>
 
-      <!-- 2. 최근 매칭 완료 이력 -->
-      <section class="grid-item glass-card card-half">
-        <div class="card-header">
-          <h2>최근 매칭 성공 이력</h2>
-          <span class="badge green">LIVE</span>
-        </div>
-        <div class="table-container">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>시간</th>
-                <th>업체</th>
-                <th>구분</th>
-                <th>이름</th>
-                <th>금액</th>
-                <th>상태</th>
-              </tr>
-            </thead>
-            <tbody id="success-log-body">
-              <tr>
-                <td colspan="6" class="empty-row">최근 매칭 성공 이력이 없습니다.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+          <!-- 2. 최근 매칭 완료 이력 -->
+          <section class="grid-item glass-card card-half">
+            <div class="card-header">
+              <h2>최근 매칭 성공 이력</h2>
+              <span class="badge green">LIVE</span>
+            </div>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>시간</th>
+                    <th>업체</th>
+                    <th>구분</th>
+                    <th>이름</th>
+                    <th>금액</th>
+                    <th>상태</th>
+                  </tr>
+                </thead>
+                <tbody id="success-log-body">
+                  <tr>
+                    <td colspan="6" class="empty-row">최근 매칭 성공 이력이 없습니다.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-      <!-- 3. 실시간 에러 및 시스템 로그 -->
-      <section class="grid-item glass-card card-full">
-        <div class="card-header">
-          <h2>시스템 경고 및 에러 로그</h2>
-          <button class="btn btn-secondary btn-xs" id="clear-error-log">로그 지우기</button>
-        </div>
-        <div class="terminal-log" id="error-log-container">
-          <div class="terminal-line system-msg">[SYSTEM] 실시간 모니터링 대시보드 기동 완료. 로그 감시 시작...</div>
-        </div>
-      </section>
+          <!-- 3. 실시간 에러 및 시스템 로그 -->
+          <section class="grid-item glass-card card-full">
+            <div class="card-header">
+              <h2>시스템 경고 및 에러 로그</h2>
+              <button class="btn btn-secondary btn-xs" id="clear-error-log">로그 지우기</button>
+            </div>
+            <div class="terminal-log" id="error-log-container">
+              <div class="terminal-line system-msg">[SYSTEM] 실시간 모니터링 대시보드 기동 완료. 로그 감시 시작...</div>
+            </div>
+          </section>
 
-    </main>
+        </main>
+      </div>
+
+      <!-- 2. 출금 검수 탭 -->
+      <div id="audit-tab" class="tab-content" style="display: none;">
+        <main class="dashboard-grid">
+          <!-- 검수 필터 영역 -->
+          <section class="grid-item glass-card card-full">
+            <div class="card-header">
+              <h2>출금 매칭 검수 필터</h2>
+            </div>
+            <div class="filter-form-row">
+              <div class="filter-group">
+                <label for="audit-start-date">시작일</label>
+                <input type="text" id="audit-start-date" placeholder="YYYY.MM.DD" class="form-input-small">
+              </div>
+              <div class="filter-group">
+                <label for="audit-end-date">종료일</label>
+                <input type="text" id="audit-end-date" placeholder="YYYY.MM.DD" class="form-input-small">
+              </div>
+              <div class="filter-group checkbox-wrapper">
+                <input type="checkbox" id="audit-unmatched-only">
+                <label for="audit-unmatched-only" style="cursor: pointer; user-select: none;">미매칭 출금만 보기</label>
+              </div>
+              <button class="btn btn-primary" id="audit-search-btn">🔍 조회하기</button>
+            </div>
+          </section>
+
+          <!-- 검수 대조 결과 테이블 영역 -->
+          <section class="grid-item glass-card card-full">
+            <div class="card-header">
+              <h2>출금 검수 대조 결과</h2>
+              <span class="badge" id="audit-count">0건 조회됨</span>
+            </div>
+            <div class="table-container">
+              <table class="data-table audit-table">
+                <thead>
+                  <tr class="group-header-row">
+                    <th colspan="4" class="table-group-header text-center">실제 출금 내역 (SMS 수신)</th>
+                    <th colspan="5" class="table-group-header text-center line-left">출금 신청 내역 (사이트)</th>
+                  </tr>
+                  <tr>
+                    <th>시간</th>
+                    <th>예금주</th>
+                    <th>출금액</th>
+                    <th>매칭 상태</th>
+                    
+                    <th class="line-left">업체명</th>
+                    <th>회원 ID</th>
+                    <th>예금주</th>
+                    <th>신청액</th>
+                    <th>신청 시간</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-log-body">
+                  <tr>
+                    <td colspan="9" class="empty-row">조회 버튼을 클릭하여 데이터를 로드하세요.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+
+    </div>
   </div>
 
   <!-- Register/Edit Company Modal Dialog -->

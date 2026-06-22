@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg-color: #0b0d19;
   --panel-bg: rgba(20, 24, 46, 0.45);
   --border-color: rgba(255, 255, 255, 0.08);
@@ -545,4 +545,152 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+/* Tab Navigation Wrapper */
+.tab-nav-wrapper {
+  display: flex;
+  gap: 12px;
+  padding: 12px 24px;
+  margin-bottom: 24px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tab-btn.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Filter Form for Audit */
+.filter-form-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 10px 0;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.form-input-small {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+  width: 130px;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+
+.form-input-small:focus {
+  border-color: var(--accent-color);
+}
+
+.checkbox-wrapper {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin-top: auto;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent-color);
+}
+
+/* Audit Table Styles */
+.audit-table th, .audit-table td {
+  padding: 10px 8px;
+  font-size: 12px;
+}
+
+.group-header-row th {
+  background: #14172e !important;
+  color: var(--text-main);
+  font-size: 13px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.table-group-header {
+  font-weight: 700 !important;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.line-left {
+  border-left: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.badge-status {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-block;
+}
+
+.badge-status.success {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success-color);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-status.fail {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--error-color);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.possible-list {
+  list-style: none;
+  font-size: 11px;
+  color: var(--warning-color);
+  padding-left: 0;
+}
+
+.possible-item {
+  margin-bottom: 2px;
+  padding: 2px 4px;
+  background: rgba(245, 158, 11, 0.1);
+  border-radius: 4px;
+  display: block;
 }
