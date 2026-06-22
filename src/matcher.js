@@ -5,6 +5,7 @@ const iconv = require('iconv-lite');
 
 const successLogs = [];
 const errorLogs = [];
+const activeMatches = new Set(); // 동시성 중복 매칭 처리 방지용 락커
 const MAX_LOG_SIZE = 100;
 
 function addSuccessLog(log) {
@@ -81,10 +82,23 @@ function sendSocketNotification(host, port, userId, amount, isDeposit) {
 // 입출금 매칭 핵심 로직
 async function processMatch(smsData, companies) {
   const { seqno, dt, tm, bank_no, inout_amt, inout_tp, bank_nm } = smsData;
+  
+  // 동시성 레이스 컨디션 방지를 위한 고유 매칭 키 생성
+  const matchKey = `${dt.trim()}_${bank_no.trim()}_${inout_amt}_${inout_tp}_${bank_nm.trim()}`;
+  if (activeMatches.has(matchKey)) {
+    console.log(`[동시성 방지] 이미 매칭 처리 중인 건입니다. (Key: ${matchKey})`);
+    return false;
+  }
+  activeMatches.add(matchKey);
+
   const bankPool = db.getBankPool();
-  if (!bankPool) return false;
+  if (!bankPool) {
+    activeMatches.delete(matchKey);
+    return false;
+  }
 
   let matched = false;
+  try {
 
   for (const company of companies) {
     if (!company.enabled) continue;
@@ -139,20 +153,23 @@ async function processMatch(smsData, companies) {
           .input('dummy', sql.VarChar, '')
           .query("EXEC PT_INOUT_PROC @userId, @rqstTm, @rsltTp, @rqstAmt, @processor, @dummy");
 
-        // 2. DSBH_2.dbo.BANK 테이블 레코드 처리 상태 업데이트 (TP = '2')
+        // 2. DSBH_2.dbo.BANK 테이블 레코드 처리 상태 업데이트 (단 1개 행만 TP = '2'로 업데이트)
         await bankPool.request()
           .input('dt', sql.VarChar, dt)
           .input('bank_no', sql.VarChar, bank_no)
           .input('amt', sql.VarChar, inout_amt.toString())
           .input('bank_nm', sql.VarChar, bank_nm)
           .query(`
-            UPDATE BANK 
-            SET TP = '2' 
-            WHERE TP = '1' 
-              AND LTRIM(RTRIM(DT)) = LTRIM(RTRIM(@dt)) 
-              AND BANK_NO = @bank_no 
-              AND INOUT_AMT = @amt 
-              AND BANK_NM = @bank_nm
+            WITH CTE AS (
+              SELECT TOP 1 TP 
+              FROM BANK 
+              WHERE TP = '1' 
+                AND LTRIM(RTRIM(DT)) = LTRIM(RTRIM(@dt)) 
+                AND BANK_NO = @bank_no 
+                AND INOUT_AMT = @amt 
+                AND BANK_NM = @bank_nm
+            )
+            UPDATE CTE SET TP = '2'
           `);
 
         // 3. 알림 소켓 비동기 전송
@@ -175,8 +192,11 @@ async function processMatch(smsData, companies) {
       addErrorLog(`업체 [${company.name}] 매칭 처리 중 DB 에러:`, err);
     }
   }
+} finally {
+  activeMatches.delete(matchKey);
+}
 
-  return matched;
+return matched;
 }
 
 // 과거 미처리 건에 대한 주기적 재매칭 스케줄러
