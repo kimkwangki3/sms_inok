@@ -340,7 +340,7 @@ function createServer(configPath, config, updateConfigCallback) {
               SELECT USER_ID, RQST_TM, RQST_AMT, USER_BANK_ACNT_NM, RSLT_TP 
               FROM INOUT 
               WHERE IO_TP = '2' 
-                AND RQST_TRADE_DT BETWEEN @startDateRaw AND @endDateRaw 
+                AND RQST_SYS_DT BETWEEN @startDateRaw AND @endDateRaw 
               ORDER BY RQST_TM DESC
             `);
 
