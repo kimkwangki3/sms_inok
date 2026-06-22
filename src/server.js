@@ -290,15 +290,28 @@ function createServer(configPath, config, updateConfigCallback) {
       const startTm = `${startDateRaw}000000`;
       const endTm = `${endDateRaw}235959`;
 
-      // 1. BANK 테이블에서 기간 내 모든 실제 출금 내역 조회
+      // 시차 및 날짜 경계선 오류 방지를 위한 BANK 조회 기간 +-1일 여유 계산
+      const sParts = start_date.split('.');
+      const eParts = end_date.split('.');
+      const sDateObj = new Date(parseInt(sParts[0]), parseInt(sParts[1]) - 1, parseInt(sParts[2]));
+      const eDateObj = new Date(parseInt(eParts[0]), parseInt(eParts[1]) - 1, parseInt(eParts[2]));
+      
+      const marginSDate = new Date(sDateObj.getTime() - 24 * 60 * 60 * 1000);
+      const marginEDate = new Date(eDateObj.getTime() + 24 * 60 * 60 * 1000);
+      
+      const pad = (n) => String(n).padStart(2, '0');
+      const bankStartDate = `${marginSDate.getFullYear()}.${pad(marginSDate.getMonth() + 1)}.${pad(marginSDate.getDate())}`;
+      const bankEndDate = `${marginEDate.getFullYear()}.${pad(marginEDate.getMonth() + 1)}.${pad(marginEDate.getDate())}`;
+
+      // 1. BANK 테이블에서 앞뒤 1일 여유를 둔 실제 출금 내역 조회
       const bankResult = await bankPool.request()
-        .input('startDate', sql.VarChar, start_date)
-        .input('endDate', sql.VarChar, end_date)
+        .input('bankStartDate', sql.VarChar, bankStartDate)
+        .input('bankEndDate', sql.VarChar, bankEndDate)
         .query(`
           SELECT DT, TM, BANK_NO, INOUT_AMT, BANK_NM, TP 
           FROM BANK 
           WHERE INOUT_TP = '출금' 
-            AND DT BETWEEN @startDate AND @endDate 
+            AND DT BETWEEN @bankStartDate AND @bankEndDate 
           ORDER BY DT DESC, TM DESC
         `);
       const bankSmsList = bankResult.recordset.map(sms => ({
@@ -336,13 +349,17 @@ function createServer(configPath, config, updateConfigCallback) {
           for (const req of requests) {
             const rqstAmt = parseFloat(req.RQST_AMT) || 0;
             const acntNm = (req.USER_BANK_ACNT_NM || '').trim();
-            const rqstTm = (req.RQST_TM || '').trim();
+            const rqstTm = req.RQST_TM;
 
             let matchedSms = null;
             const possibleSmsList = [];
 
             // 3. 실제 출금 SMS 목록에서 매칭 대상 검색
             for (const sms of bankSmsList) {
+              // 업체명 정합성 비교 (예: sms.bank_no = "금메달", company.name = "금메달")
+              const isCompanyMatched = sms.bank_no.toLowerCase().replace(/\s/g, '') === company.name.toLowerCase().replace(/\s/g, '');
+              if (!isCompanyMatched) continue;
+
               // 출금 매칭 기준: 실제출금액(inout_amt)은 신청액(rqstAmt) 이상, 신청액 + 1000 이하이어야 함
               const isAmtValid = sms.inout_amt >= rqstAmt && sms.inout_amt <= rqstAmt + 1000;
               const isNameMatched = sms.bank_nm === acntNm;
