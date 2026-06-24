@@ -283,30 +283,24 @@ function createServer(configPath, config, updateConfigCallback) {
         return res.status(500).json({ error: 'BANK DB 연결이 활성화되지 않았습니다.' });
       }
 
-      // 날짜 포맷 변환 (YYYY.MM.DD -> YYYYMMDD)
-      const startDateRaw = start_date.replace(/[^0-9]/g, '');
-      const endDateRaw = end_date.replace(/[^0-9]/g, '');
-      
-      const startTm = `${startDateRaw}000000`;
-      const endTm = `${endDateRaw}235959`;
-
-      // 시차 및 날짜 경계선 오류 방지를 위한 BANK 조회 기간 +-1일 여유 계산
+      // YYYY.MM.DD 형태의 문자열을 Date 객체로 파싱
       const sParts = start_date.split('.');
       const eParts = end_date.split('.');
       const sDateObj = new Date(parseInt(sParts[0]), parseInt(sParts[1]) - 1, parseInt(sParts[2]));
       const eDateObj = new Date(parseInt(eParts[0]), parseInt(eParts[1]) - 1, parseInt(eParts[2]));
       
+      // INOUT 조회용 전후 1일 마진 계산
       const marginSDate = new Date(sDateObj.getTime() - 24 * 60 * 60 * 1000);
       const marginEDate = new Date(eDateObj.getTime() + 24 * 60 * 60 * 1000);
       
       const pad = (n) => String(n).padStart(2, '0');
-      const bankStartDate = `${marginSDate.getFullYear()}.${pad(marginSDate.getMonth() + 1)}.${pad(marginSDate.getDate())}`;
-      const bankEndDate = `${marginEDate.getFullYear()}.${pad(marginEDate.getMonth() + 1)}.${pad(marginEDate.getDate())}`;
+      const inoutStartDateRaw = `${marginSDate.getFullYear()}${pad(marginSDate.getMonth() + 1)}${pad(marginSDate.getDate())}`;
+      const inoutEndDateRaw = `${marginEDate.getFullYear()}${pad(marginEDate.getMonth() + 1)}${pad(marginEDate.getDate())}`;
 
-      // 1. BANK 테이블에서 앞뒤 1일 여유를 둔 실제 출금 내역 조회 (공백 제거 매칭 적용)
+      // 1. BANK 테이블에서 실제 지정한 기간의 실제 출금 내역 조회 (마진 없음)
       const bankResult = await bankPool.request()
-        .input('bankStartDate', sql.VarChar, bankStartDate)
-        .input('bankEndDate', sql.VarChar, bankEndDate)
+        .input('bankStartDate', sql.VarChar, start_date)
+        .input('bankEndDate', sql.VarChar, end_date)
         .query(`
           SELECT DT, TM, BANK_NO, INOUT_AMT, BANK_NM, TP 
           FROM BANK 
@@ -314,6 +308,7 @@ function createServer(configPath, config, updateConfigCallback) {
             AND LTRIM(RTRIM(DT)) BETWEEN @bankStartDate AND @bankEndDate 
           ORDER BY DT DESC, TM DESC
         `);
+
       const bankSmsList = bankResult.recordset.map(sms => ({
         dt: (sms.DT || '').trim(),
         tm: (sms.TM || '').trim(),
@@ -323,9 +318,9 @@ function createServer(configPath, config, updateConfigCallback) {
         tp: sms.TP
       }));
 
-      const auditData = [];
-
-      // 2. 각 업체 DB의 INOUT 테이블에서 출금 신청 내역 조회
+      // 2. 각 업체 DB의 INOUT 테이블에서 출금 신청 내역 조회 (전후 1일 마진 적용)
+      const companyInouts = {};
+      
       for (const company of config.companies) {
         if (!company.enabled) continue;
 
@@ -334,89 +329,102 @@ function createServer(configPath, config, updateConfigCallback) {
 
         try {
           const inoutResult = await compPool.request()
-            .input('startDateRaw', sql.VarChar, startDateRaw)
-            .input('endDateRaw', sql.VarChar, endDateRaw)
+            .input('startDateRaw', sql.VarChar, inoutStartDateRaw)
+            .input('endDateRaw', sql.VarChar, inoutEndDateRaw)
             .query(`
-              SELECT USER_ID, RQST_TM, RQST_AMT, USER_BANK_ACNT_NM, RSLT_TP 
+              SELECT USER_ID, RQST_TM, RQST_AMT, USER_BANK_ACNT_NM, RSLT_TP, RQST_SYS_DT 
               FROM INOUT 
               WHERE IO_TP = '2' 
                 AND RQST_SYS_DT BETWEEN @startDateRaw AND @endDateRaw 
-              ORDER BY RQST_TM DESC
+              ORDER BY RQST_SYS_DT DESC, RQST_TM DESC
             `);
-
-          const requests = inoutResult.recordset;
-
-          for (const req of requests) {
-            const rqstAmt = parseFloat(req.RQST_AMT) || 0;
-            const acntNm = (req.USER_BANK_ACNT_NM || '').trim();
-            const rqstTm = req.RQST_TM;
-
-            let matchedSms = null;
-            const possibleSmsList = [];
-
-            // 3. 실제 출금 SMS 목록에서 매칭 대상 검색
-            for (const sms of bankSmsList) {
-              // 업체명 정합성 비교 (예: sms.bank_no = "금메달", company.name = "금메달")
-              const isCompanyMatched = sms.bank_no.toLowerCase().replace(/\s/g, '') === company.name.toLowerCase().replace(/\s/g, '');
-              if (!isCompanyMatched) continue;
-
-              // 출금 매칭 기준: 실제출금액(inout_amt)은 신청액(rqstAmt) 이상, 신청액 + 1000 이하이어야 함
-              const isAmtValid = sms.inout_amt >= rqstAmt && sms.inout_amt <= rqstAmt + 1000;
-              const isNameMatched = sms.bank_nm === acntNm;
-
-              if (isAmtValid && isNameMatched) {
-                // 이름과 금액이 모두 맞으면 유력 매칭
-                if (req.RSLT_TP === '1' && sms.tp === '2') {
-                  matchedSms = sms;
-                  break;
-                } else if (req.RSLT_TP === '0' && sms.tp === '1') {
-                  matchedSms = sms;
-                  break;
-                } else if (!matchedSms) {
-                  matchedSms = sms;
-                }
-              } else if (isAmtValid && !isNameMatched) {
-                // 금액은 맞는데 이름이 다른 경우 -> 이름 불일치 매칭 불가 후보군
-                possibleSmsList.push({
-                  ...sms,
-                  reason: '이름 불일치'
-                });
-              } else if (!isAmtValid && isNameMatched) {
-                // 이름은 맞는데 금액이 다른 경우 -> 금액 불일치 매칭 불가 후보군
-                possibleSmsList.push({
-                  ...sms,
-                  reason: '금액 불일치'
-                });
-              }
-            }
-
-            const item = {
-              company_name: company.name,
-              user_id: req.USER_ID.trim(),
-              rqst_tm: rqstTm.trim(),
-              rqst_amt: rqstAmt,
-              acnt_nm: acntNm,
-              rslt_tp: req.RSLT_TP,
-              matched_sms: matchedSms,
-              possible_sms_list: possibleSmsList
-            };
-
-            if (unmatched_only === 'true') {
-              // 매칭이 안 된 건(matched_sms가 없거나, 미승인 상태)만 필터링
-              if (!matchedSms || req.RSLT_TP === '0') {
-                auditData.push(item);
-              }
-            } else {
-              auditData.push(item);
-            }
-          }
+          companyInouts[company.id] = inoutResult.recordset;
         } catch (companyErr) {
           console.error(`출금 검수 중 업체 [${company.name}] INOUT 조회 실패:`, companyErr.message);
+          companyInouts[company.id] = [];
         }
       }
 
-      // 신청 시간 순으로 전체 데이터 정렬 (최신순)
-      auditData.sort((a, b) => b.rqst_tm.localeCompare(a.rqst_tm));
+      const auditData = [];
+
+      // 3. 실제 출금 SMS 목록 기준으로 루프를 돌며 대조 작업 수행
+      for (const sms of bankSmsList) {
+        const company = config.companies.find(c => 
+          sms.bank_no.toLowerCase().replace(/\s/g, '') === c.name.toLowerCase().replace(/\s/g, '')
+        );
+
+        let matchedInout = null;
+        const possibleInoutList = [];
+
+        if (company && company.enabled) {
+          const inouts = companyInouts[company.id] || [];
+
+          for (const req of inouts) {
+            const rqstAmt = parseFloat(req.RQST_AMT) || 0;
+            const acntNm = (req.USER_BANK_ACNT_NM || '').trim();
+
+            const isAmtValid = sms.inout_amt >= rqstAmt && sms.inout_amt <= rqstAmt + 1000;
+            const isNameMatched = sms.bank_nm === acntNm;
+
+            if (isAmtValid && isNameMatched) {
+              if (req.RSLT_TP === '1' && sms.tp === '2') {
+                matchedInout = req;
+                break;
+              } else if (req.RSLT_TP === '0' && sms.tp === '1') {
+                matchedInout = req;
+                break;
+              } else if (!matchedInout) {
+                matchedInout = req;
+              }
+            } else if (isAmtValid && !isNameMatched) {
+              possibleInoutList.push({
+                ...req,
+                reason: '이름 불일치'
+              });
+            } else if (!isAmtValid && isNameMatched) {
+              possibleInoutList.push({
+                ...req,
+                reason: '금액 불일치'
+              });
+            }
+          }
+        }
+
+        const item = {
+          bank_dt: sms.dt,
+          bank_tm: sms.tm,
+          bank_no: sms.bank_no,
+          inout_amt: sms.inout_amt,
+          bank_nm: sms.bank_nm,
+          tp: sms.tp,
+          company_name: company ? company.name : (sms.bank_no || '알수없음'),
+          matched_inout: matchedInout ? {
+            user_id: matchedInout.USER_ID.trim(),
+            rqst_tm: matchedInout.RQST_TM.trim(),
+            rqst_amt: parseFloat(matchedInout.RQST_AMT) || 0,
+            acnt_nm: (matchedInout.USER_BANK_ACNT_NM || '').trim(),
+            rslt_tp: matchedInout.RSLT_TP,
+            rqst_sys_dt: matchedInout.RQST_SYS_DT
+          } : null,
+          possible_inout_list: possibleInoutList.map(inout => ({
+            user_id: inout.USER_ID.trim(),
+            rqst_tm: inout.RQST_TM.trim(),
+            rqst_amt: parseFloat(inout.RQST_AMT) || 0,
+            acnt_nm: (inout.USER_BANK_ACNT_NM || '').trim(),
+            rslt_tp: inout.RSLT_TP,
+            rqst_sys_dt: inout.RQST_SYS_DT,
+            reason: inout.reason
+          }))
+        };
+
+        if (unmatched_only === 'true') {
+          if (!matchedInout || matchedInout.RSLT_TP !== '1') {
+            auditData.push(item);
+          }
+        } else {
+          auditData.push(item);
+        }
+      }
 
       res.json(auditData);
     } catch (err) {

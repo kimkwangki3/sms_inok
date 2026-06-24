@@ -633,54 +633,53 @@ function renderAuditTable(records) {
   records.forEach(row => {
     const tr = document.createElement('tr');
     
-    // 1. 출금 신청 내역 (사이트) - 왼쪽
-    const requestTds = `
-      <td>${formatRqstTm(row.rqst_tm)}</td>
-      <td><strong>[${row.company_name}]</strong></td>
-      <td>${row.user_id}</td>
-      <td>${row.acnt_nm}</td>
-      <td>${Number(row.rqst_amt).toLocaleString()}원</td>
-    `;
-
-    // 2. 실제 출금 내역 (SMS 수신) 대조 - 오른쪽 (첫 셀에 line-left 적용)
-    let smsTds = '';
+    // 1. 출금 신청 내역 (사이트) - 왼쪽 (대조되는 신청 건)
+    let requestTds = '';
     
-    if (row.matched_sms) {
-      // 매칭된 실제 출금 SMS 정보 표시
-      const sms = row.matched_sms;
-      const isSmsMatched = sms.tp === '2';
-      smsTds = `
-        <td class="line-left">${sms.tm}</td>
-        <td><strong>${sms.bank_nm}</strong></td>
-        <td>${Number(sms.inout_amt).toLocaleString()}원</td>
-        <td>
-          <span class="badge-status ${isSmsMatched ? 'success' : 'fail'}">
-            ${isSmsMatched ? '매칭 완료' : '미매칭'}
-          </span>
-        </td>
+    if (row.matched_inout) {
+      const inout = row.matched_inout;
+      requestTds = `
+        <td>${formatRqstTm(inout.rqst_tm)}</td>
+        <td><strong>[${row.company_name}]</strong></td>
+        <td>${inout.user_id}</td>
+        <td>${inout.acnt_nm}</td>
+        <td>${Number(inout.rqst_amt).toLocaleString()}원</td>
       `;
-    } else if (row.possible_sms_list && row.possible_sms_list.length > 0) {
-      // 매칭되지 않고 유사한 실제 출금 후보 목록 표시 (이름/금액 불일치 구분 가능)
-      const possibleItems = row.possible_sms_list.map(s => `
-        <li class="possible-item" title="출금시간: ${s.tm}">
-          [${s.reason}] 시간: ${s.tm} | 예금주: ${s.bank_nm} | 금액: ${Number(s.inout_amt).toLocaleString()}원
+    } else if (row.possible_inout_list && row.possible_inout_list.length > 0) {
+      // 매칭되지 않고 유사한 출금 신청 후보 목록 표시
+      const possibleItems = row.possible_inout_list.map(req => `
+        <li class="possible-item" title="신청시간: ${formatRqstTm(req.rqst_tm)}">
+          [${req.reason}] 시간: ${formatRqstTm(req.rqst_tm)} | ID: ${req.user_id} | 예금주: ${req.acnt_nm} | 금액: ${Number(req.rqst_amt).toLocaleString()}원
         </li>
       `).join('');
       
-      smsTds = `
-        <td colspan="4" class="line-left" style="background: rgba(245, 158, 11, 0.03); vertical-align: top;">
-          <div style="font-size: 11px; font-weight: 600; color: var(--warning-color); margin-bottom: 4px;">⚠️ 미매칭 실제 출금 후보 (${row.possible_sms_list.length}건):</div>
+      requestTds = `
+        <td colspan="5" style="background: rgba(245, 158, 11, 0.03); vertical-align: top;">
+          <div style="font-size: 11px; font-weight: 600; color: var(--warning-color); margin-bottom: 4px;">⚠️ 미매칭 출금 신청 후보 (${row.possible_inout_list.length}건):</div>
           <ul class="possible-list">${possibleItems}</ul>
         </td>
       `;
     } else {
-      // 실제 출금 기록이 아예 검색되지 않은 경우
-      smsTds = `
-        <td colspan="4" class="line-left text-center" style="color: var(--text-muted); font-style: italic;">
-          - (일치하는 출금 문자 내역 없음) -
+      // 매칭 후보도 전혀 없는 경우
+      requestTds = `
+        <td colspan="5" class="text-center" style="color: var(--text-muted); font-style: italic;">
+          - (일치하는 출금 신청 내역 없음) -
         </td>
       `;
     }
+
+    // 2. 실제 출금 내역 (SMS 수신) - 오른쪽
+    const isMatched = !!row.matched_inout && row.matched_inout.rslt_tp === '1';
+    const smsTds = `
+      <td class="line-left">${row.bank_tm}</td>
+      <td><strong>${row.bank_nm}</strong></td>
+      <td>${Number(row.inout_amt).toLocaleString()}원</td>
+      <td>
+        <span class="badge-status ${isMatched ? 'success' : 'fail'}">
+          ${isMatched ? '매칭 완료' : '미매칭'}
+        </span>
+      </td>
+    `;
 
     tr.innerHTML = requestTds + smsTds;
     auditLogBody.appendChild(tr);
