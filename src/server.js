@@ -349,14 +349,31 @@ function createServer(configPath, config, updateConfigCallback) {
 
       // 3. 실제 출금 SMS 목록 기준으로 루프를 돌며 대조 작업 수행
       for (const sms of bankSmsList) {
-        const company = config.companies.find(c => 
+        // SMS 날짜 포맷 변환: "2026.06.24" -> "20260624"
+        const smsDateRaw = sms.dt.replace(/[^0-9]/g, '');
+
+        let matchedInout = null;
+        let matchedCompany = null;
+        const possibleInoutList = [];
+
+        // SMS의 업체명 (sms.bank_no)과 일치하는 최우선 대조 업체 찾기
+        const primaryCompany = config.companies.find(c => 
           sms.bank_no.toLowerCase().replace(/\s/g, '') === c.name.toLowerCase().replace(/\s/g, '')
         );
 
-        let matchedInout = null;
-        const possibleInoutList = [];
+        // 대조할 업체 순서 결정 (우선순위 업체가 맨 앞으로 오고, 나머지가 뒤로 오도록)
+        const checkCompanies = [];
+        if (primaryCompany && primaryCompany.enabled) {
+          checkCompanies.push(primaryCompany);
+        }
+        for (const c of config.companies) {
+          if (c.enabled && (!primaryCompany || c.id !== primaryCompany.id)) {
+            checkCompanies.push(c);
+          }
+        }
 
-        if (company && company.enabled) {
+        // 각 업체를 순회하며 매칭 대조
+        for (const company of checkCompanies) {
           const inouts = companyInouts[company.id] || [];
 
           for (const req of inouts) {
@@ -365,28 +382,62 @@ function createServer(configPath, config, updateConfigCallback) {
 
             const isAmtValid = sms.inout_amt >= rqstAmt && sms.inout_amt <= rqstAmt + 1000;
             const isNameMatched = sms.bank_nm === acntNm;
+            
+            // 날짜 일치 여부 (시스템 등록 날짜와 SMS 수신일 일치)
+            const isDateMatched = req.RQST_SYS_DT === smsDateRaw;
 
             if (isAmtValid && isNameMatched) {
-              if (req.RSLT_TP === '1' && sms.tp === '2') {
-                matchedInout = req;
-                break;
-              } else if (req.RSLT_TP === '0' && sms.tp === '1') {
-                matchedInout = req;
-                break;
-              } else if (!matchedInout) {
-                matchedInout = req;
+              const rsltTpStr = String(req.RSLT_TP);
+              const smsTpStr = String(sms.tp);
+
+              if (isDateMatched) {
+                if (rsltTpStr === '1' && smsTpStr === '2') {
+                  matchedInout = req;
+                  matchedCompany = company;
+                  break;
+                } else if (rsltTpStr === '0' && smsTpStr === '1') {
+                  matchedInout = req;
+                  matchedCompany = company;
+                  break;
+                } else if (!matchedInout) {
+                  matchedInout = req;
+                  matchedCompany = company;
+                }
+              } else {
+                // 날짜는 다르지만 이름과 금액이 맞는 경우 -> 매칭 후보로 보관 (우선순위 낮음)
+                possibleInoutList.push({
+                  ...req,
+                  companyName: company.name,
+                  reason: '날짜 불일치 시차'
+                });
               }
-            } else if (isAmtValid && !isNameMatched) {
+            } else if (isAmtValid && !isNameMatched && isDateMatched) {
               possibleInoutList.push({
                 ...req,
+                companyName: company.name,
                 reason: '이름 불일치'
               });
-            } else if (!isAmtValid && isNameMatched) {
+            } else if (!isAmtValid && isNameMatched && isDateMatched) {
               possibleInoutList.push({
                 ...req,
+                companyName: company.name,
                 reason: '금액 불일치'
               });
             }
+          }
+          
+          if (matchedInout) break;
+        }
+
+        // 만약 완벽한 매칭 건이 없는데 possibleInoutList에 날짜 불일치(시차) 후보가 있다면 구원 매칭 적용
+        if (!matchedInout) {
+          const timeDriftInout = possibleInoutList.find(p => p.reason === '날짜 불일치 시차');
+          if (timeDriftInout) {
+            matchedInout = timeDriftInout;
+            matchedCompany = config.companies.find(c => c.name === timeDriftInout.companyName);
+            // 매칭 성공 처리되었으므로 후보군 목록에서 제거
+            const idx = possibleInoutList.indexOf(timeDriftInout);
+            if (idx > -1) possibleInoutList.splice(idx, 1);
           }
         }
 
@@ -397,7 +448,7 @@ function createServer(configPath, config, updateConfigCallback) {
           inout_amt: sms.inout_amt,
           bank_nm: sms.bank_nm,
           tp: sms.tp,
-          company_name: company ? company.name : (sms.bank_no || '알수없음'),
+          company_name: matchedCompany ? matchedCompany.name : (primaryCompany ? primaryCompany.name : (sms.bank_no || '알수없음')),
           matched_inout: matchedInout ? {
             user_id: matchedInout.USER_ID.trim(),
             rqst_tm: matchedInout.RQST_TM.trim(),
@@ -407,6 +458,7 @@ function createServer(configPath, config, updateConfigCallback) {
             rqst_sys_dt: matchedInout.RQST_SYS_DT
           } : null,
           possible_inout_list: possibleInoutList.map(inout => ({
+            company_name: inout.companyName || (primaryCompany ? primaryCompany.name : '알수없음'),
             user_id: inout.USER_ID.trim(),
             rqst_tm: inout.RQST_TM.trim(),
             rqst_amt: parseFloat(inout.RQST_AMT) || 0,

@@ -638,18 +638,23 @@ function renderAuditTable(records) {
     
     if (row.matched_inout) {
       const inout = row.matched_inout;
+      const isCrossMatched = row.company_name && row.bank_no && 
+                             row.company_name.toLowerCase().replace(/\s/g, '') !== row.bank_no.toLowerCase().replace(/\s/g, '');
+      const displayCompany = isCrossMatched 
+        ? `${row.company_name}<span style="font-size: 10px; color: var(--warning-color); display: block; font-weight: normal;">(SMS: ${row.bank_no})</span>` 
+        : row.company_name;
+
       requestTds = `
         <td>${formatRqstTm(inout.rqst_tm)}</td>
-        <td><strong>[${row.company_name}]</strong></td>
+        <td><strong>[${displayCompany}]</strong></td>
         <td>${inout.user_id}</td>
         <td>${inout.acnt_nm}</td>
         <td>${Number(inout.rqst_amt).toLocaleString()}원</td>
       `;
     } else if (row.possible_inout_list && row.possible_inout_list.length > 0) {
-      // 매칭되지 않고 유사한 출금 신청 후보 목록 표시
       const possibleItems = row.possible_inout_list.map(req => `
         <li class="possible-item" title="신청시간: ${formatRqstTm(req.rqst_tm)}">
-          [${req.reason}] 시간: ${formatRqstTm(req.rqst_tm)} | ID: ${req.user_id} | 예금주: ${req.acnt_nm} | 금액: ${Number(req.rqst_amt).toLocaleString()}원
+          [${req.company_name}] [${req.reason}] 시간: ${formatRqstTm(req.rqst_tm)} | ID: ${req.user_id} | 예금주: ${req.acnt_nm} | 금액: ${Number(req.rqst_amt).toLocaleString()}원
         </li>
       `).join('');
       
