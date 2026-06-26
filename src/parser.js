@@ -1,21 +1,12 @@
+const BANK_PREFIX_REGEX = /^(새마을금고|새마을|새마|신협|농협|우리|기업|하나|수협|우체국|우체|신한|국민|외환|대구|부산|광주|전북|경남|SC|제일|씨티|산업|케이|케뱅|카카오|카뱅|토스|토뱅|산림|저축|타행|미래에셋|미래|한국투자|한투|삼성증권|삼성|키움증권|키움|대신증권|대신|유안타|메리츠|한화투자|한화|현대차|현대|하이투자|하이|DB금융|DB|유진투자|유진|교보|NH투자|NH|KB증권|KB|IBK투자|IBK)/;
+
 function cleanBankName(name) {
   if (!name) return '';
   // 이름 클리닝 (한글/영문만 남김)
   let cleanName = name.replace(/[^가-힣a-zA-Z]/g, '').trim();
 
-  // 타행 이체 시 이름 앞에 붙는 은행명 목록 정의 및 제거
-  const bankNames = [
-    "새마을금고", "새마을", "새마", "신협", "농협", "우리", "기업", "하나", "수협", "우체국", "신한", "국민", 
-    "외환", "대구", "부산", "광주", "전북", "경남", "SC", "제일", "씨티", 
-    "산업", "케이", "케뱅", "카카오", "카뱅", "토스", "토뱅", "산림", "저축", "타행"
-  ];
-
-  for (const bank of bankNames) {
-    if (cleanName.startsWith(bank)) {
-      cleanName = cleanName.substring(bank.length).trim();
-      break;
-    }
-  }
+  // 정규식으로 한 번에 제거
+  cleanName = cleanName.replace(BANK_PREFIX_REGEX, '').trim();
   return cleanName || '미상';
 }
 
